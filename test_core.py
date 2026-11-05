@@ -342,6 +342,59 @@ class ConflictFilterTests(unittest.TestCase):
         instance.filter_conflicts_button.configure.assert_called_with(state="normal")
 
 
+class ClearQueueTests(unittest.TestCase):
+    def fake_app(self, selected, active=False, busy=False):
+        from app import App
+        app = App.__new__(App)
+        app.rotation = SimpleNamespace(active=active, running=False, stop=Mock())
+        app._operation_busy = busy
+        app.selected = {game.id: game for game in selected}
+        app.chosen, app.status, app.search = Mock(), Mock(), Mock()
+        app.games = list(selected)
+        return app
+
+    def test_clear_populated_queue_updates_display_without_touching_catalog(self):
+        games = [Game("1", "A", "a.exe"), Game("2", "B", "b.exe")]
+        app = self.fake_app(games)
+        catalog = app.games
+        app.clear_queue()
+        self.assertEqual(app.selected, {})
+        app.chosen.delete.assert_called_once_with(0, "end")
+        app.chosen.insert.assert_not_called()
+        self.assertIs(app.games, catalog)
+        self.assertEqual(app.games, games)
+        app.search.set.assert_not_called()
+        app.rotation.stop.assert_not_called()
+        app.status.set.assert_called_once()
+
+    def test_empty_queue_clear_is_idempotent(self):
+        app = self.fake_app([])
+        app.clear_queue()
+        app.clear_queue()
+        self.assertEqual(app.selected, {})
+        self.assertEqual(app.chosen.delete.call_count, 2)
+
+    def test_active_retained_or_busy_queue_is_not_modified(self):
+        games = [Game("1", "A", "a.exe")]
+        for active, busy in ((True, False), (False, True), (True, True)):
+            with self.subTest(active=active, busy=busy):
+                app = self.fake_app(games, active, busy)
+                app.clear_queue()
+                self.assertEqual(list(app.selected.values()), games)
+                app.chosen.delete.assert_not_called()
+                app.status.set.assert_not_called()
+                app.rotation.stop.assert_not_called()
+
+    def test_clear_button_disabled_until_idle(self):
+        app = self.fake_app([])
+        for name in ("start_button", "stop_button", "concurrency_input", "minutes_input", "filter_conflicts_button", "clear_queue_button"):
+            setattr(app, name, Mock())
+        app.set_running(True)
+        app.clear_queue_button.configure.assert_called_with(state="disabled")
+        app.set_running(False)
+        app.clear_queue_button.configure.assert_called_with(state="normal")
+
+
 @unittest.skipUnless(os.name == "nt", "Windows helper")
 class HelperTests(unittest.TestCase):
     @staticmethod

@@ -158,7 +158,13 @@ class IdleProcess {
                     string previousText = null;
                     Action translate = delegate {
                         try {
-                            string text = File.ReadAllText(args[2], Encoding.UTF8);
+                            string text;
+                            // Permit the controller's atomic translation replacement.
+                            using (FileStream file = new FileStream(args[2], FileMode.Open, FileAccess.Read,
+                                    FileShare.ReadWrite | FileShare.Delete))
+                            using (StreamReader reader = new StreamReader(file, Encoding.UTF8)) {
+                                text = reader.ReadToEnd();
+                            }
                             if (text == previousText) return;
                             string[] parts = text.Split(new char[] {'\n'}, 2);
                             if (parts.Length != 2) return;
@@ -204,8 +210,11 @@ class ProcessBackend:
     def update_language(self):
         # Atomic replacement means a live helper sees either complete translation.
         path = self.helper_language_path
+        text = tr("helper.suffix") + "\n" + tr("helper.body")
+        if path.exists() and path.read_text(encoding="utf-8") == text:
+            return
         temporary = path.with_suffix(".tmp")
-        temporary.write_text(tr("helper.suffix") + "\n" + tr("helper.body"), encoding="utf-8")
+        temporary.write_text(text, encoding="utf-8")
         temporary.replace(path)
 
     def compile_helper(self) -> Path:
@@ -257,8 +266,10 @@ class ProcessBackend:
 
 
 class Rotation:
-    def __init__(self, backend, clock=time.monotonic):
+    def __init__(self, backend, clock=time.monotonic, cancel_event=None):
         self.backend, self.clock = backend, clock
+        self.cancel_event = cancel_event
+        self.experimental = False
         self.processes = []  # (Game, owned process); failed stops remain tracked.
         self.running = False
         self.games = []
@@ -284,12 +295,16 @@ class Rotation:
     def current(self):
         return self.current_games[0] if self.active else None
 
-    def start(self, games: list[Game], minutes: float, concurrency: int = 1):
+    def start(self, games: list[Game], minutes: float, concurrency: int = 1, *, experimental=False):
         if self.active:
             raise UserValueError("error.active")
-        if isinstance(concurrency, bool) or not isinstance(concurrency, int) or not 1 <= concurrency <= 10:
-            raise UserValueError("error.concurrency")
-        if not games or not math.isfinite(minutes) or minutes < 1 or minutes > 1440:
+        if not isinstance(experimental, bool):
+            raise UserValueError("error.mode")
+        limit = 100 if experimental else 10
+        if isinstance(concurrency, bool) or not isinstance(concurrency, int) or not 1 <= concurrency <= limit:
+            raise UserValueError("error.concurrent_limit", limit=limit)
+        if (not games or isinstance(minutes, bool) or not isinstance(minutes, (int, float))
+                or not math.isfinite(minutes) or minutes < 1 or minutes > 1440):
             raise UserValueError("error.interval")
         unique = {}
         for game in games:
@@ -305,7 +320,8 @@ class Rotation:
         self.games = selected
         self.index = 0
         self.concurrency = concurrency
-        self.interval = minutes * 60
+        self.experimental = experimental
+        self.interval = 10.0 if experimental else minutes * 60
         self.started = self.changed = self.clock()
         self.elapsed = 0.0
         self.running = True
@@ -314,7 +330,11 @@ class Rotation:
     def _launch_cohort(self):
         try:
             for game in self.games[self.index:self.index + self.concurrency]:
+                self._check_cancelled()
                 self.processes.append((game, self.backend.start(game)))
+                self._check_cancelled()
+            # Give even a slowly launched cohort its full dwell time.
+            self.changed = self.clock()
         except Exception as launch_error:
             self.running = False
             try:
@@ -322,6 +342,10 @@ class Rotation:
             except Exception as stop_error:
                 raise UserRuntimeError("error.group_launch", launch=launch_error, stop=stop_error) from launch_error
             raise
+
+    def _check_cancelled(self):
+        if self.cancel_event is not None and self.cancel_event.is_set():
+            raise UserRuntimeError("error.cancelled")
 
     def tick(self):
         if not self.running:

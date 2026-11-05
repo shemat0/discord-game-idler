@@ -4,6 +4,7 @@ from pathlib import Path
 import queue
 import threading
 import sys
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -25,7 +26,12 @@ class App:
         self.preferences_path = self.cache / "settings.json"
         set_language(load_language(self.preferences_path))
         self.catalog_path = self.cache / "catalog.json"
-        self.rotation = Rotation(ProcessBackend(self.cache))
+        self._cancel_event = threading.Event()
+        self.rotation = Rotation(ProcessBackend(self.cache), cancel_event=self._cancel_event)
+        self._operation_busy = False
+        self._stop_requested = False
+        self._closing = False
+        self._next_tick = 0.0
         self.games, self.visible, self.selected = [], {}, {}
         self.messages = queue.Queue()
         self.loading = False
@@ -35,6 +41,7 @@ class App:
         self.search.trace_add("write", lambda *_: self.filter())
         self.minutes = tk.StringVar(value="15")
         self.concurrency = tk.StringVar(value="10")
+        self.experimental = tk.BooleanVar(value=False)
         self.status = tk.StringVar()
         self.session = tk.StringVar()
         self.catalog_status = tk.StringVar()
@@ -81,12 +88,20 @@ class App:
         self.button(right, "app.remove", command=self.remove).pack(fill="x", pady=(5, 0))
         self.filter_conflicts_button = self.button(right, "app.filter", command=self.filter_conflicts)
         self.filter_conflicts_button.pack(fill="x", pady=(5, 0))
+        self.clear_queue_button = self.button(right, "app.clear_queue", command=self.clear_queue)
+        self.clear_queue_button.pack(fill="x", pady=(5, 0))
+        self.experimental_input = ttk.Checkbutton(outer, variable=self.experimental, command=self.change_mode)
+        self._text_widgets.append((self.experimental_input, "app.experimental"))
+        self.experimental_input.pack(anchor="w", pady=(10, 0))
+        self.mode_note = tk.StringVar()
+        ttk.Label(outer, textvariable=self.mode_note, wraplength=900).pack(anchor="w", pady=(3, 0))
         controls = ttk.Frame(outer)
         controls.pack(fill="x", pady=(16, 8))
         self.label(controls, "app.concurrent").pack(side="left")
         self.concurrency_input = ttk.Spinbox(controls, from_=1, to=10, width=5, textvariable=self.concurrency)
         self.concurrency_input.pack(side="left", padx=6)
-        self.label(controls, "app.max").pack(side="left")
+        self.max_note = tk.StringVar()
+        ttk.Label(controls, textvariable=self.max_note).pack(side="left")
         self.start_button = self.button(controls, "app.start", command=self.start)
         self.start_button.pack(side="right")
         self.stop_button = self.button(controls, "app.stop", command=self.stop, state="disabled")
@@ -97,7 +112,10 @@ class App:
         self.minutes_input = ttk.Spinbox(interval, from_=1, to=1440, width=7, textvariable=self.minutes)
         self.minutes_input.pack(side="left", padx=6)
         self.label(interval, "app.minutes", wraplength=560).pack(side="left")
-        ttk.Label(outer, textvariable=self.session, font=("Segoe UI", 12, "bold"), wraplength=900).pack(anchor="w", pady=6)
+        self.interval_frame = interval
+        self.experimental_interval = self.label(outer, "app.experimental_interval", wraplength=900)
+        self.session_label = ttk.Label(outer, textvariable=self.session, font=("Segoe UI", 12, "bold"), wraplength=900)
+        self.session_label.pack(anchor="w", pady=6)
         active_frame = ttk.Frame(outer)
         active_frame.pack(fill="x", pady=(0, 6))
         self.active_games = tk.Listbox(active_frame, height=3, exportselection=False)
@@ -109,6 +127,7 @@ class App:
         self.label(outer, "app.timer_note", wraplength=900).pack(anchor="w", pady=(8, 0))
         root.protocol("WM_DELETE_WINDOW", self.close)
         self.render_language()
+        self.apply_mode()
         self.load_cache()
         root.after(250, self.update)
 
@@ -140,6 +159,9 @@ class App:
             variable.set(str(message))
 
     def change_language(self, _event=None):
+        if getattr(self, "_operation_busy", False):
+            self.language.set("Русский" if current_language() == "ru" else "English")
+            return
         set_language("ru" if self.language.get() == "Русский" else "en")
         self.render_language()
         try:
@@ -147,6 +169,33 @@ class App:
             save_language(self.preferences_path, current_language())
         except OSError as error:
             self.set_message(self.status, "status.language_error", error=error)
+
+    def locked(self):
+        return self.rotation.active or getattr(self, "_operation_busy", False)
+
+    def change_mode(self):
+        if self.locked():
+            self.experimental.set(self.rotation.experimental)
+            return
+        if self.experimental.get():
+            self.concurrency.set("100")
+        else:
+            self.concurrency.set("10")
+            self.minutes.set("15")
+        self.apply_mode()
+
+    def apply_mode(self):
+        experimental = self.experimental.get()
+        self.concurrency_input.configure(to=100 if experimental else 10)
+        self.set_message(self.max_note, "app.max_experimental" if experimental else "app.max")
+        self.set_message(self.mode_note, "app.experimental_note" if experimental else "app.normal_note")
+        # Both rows occupy the same position, so mode changes do not disturb the queue.
+        if experimental:
+            self.interval_frame.pack_forget()
+            self.experimental_interval.pack(fill="x", before=self.session_label, pady=(0, 5))
+        else:
+            self.experimental_interval.pack_forget()
+            self.interval_frame.pack(fill="x", before=self.session_label, pady=(0, 5))
 
     def load_cache(self):
         bundled = Path(__file__).resolve().with_name("catalog.json")
@@ -190,14 +239,14 @@ class App:
             self.chosen.insert("end", game.name)
 
     def add(self):
-        if self.rotation.active:
+        if self.locked():
             return
         for key in self.tree.selection():
             self.selected[key] = self.visible[key]
         self.redraw_queue()
 
     def remove(self):
-        if self.rotation.active:
+        if self.locked():
             return
         keys = list(self.selected)
         for index in reversed(self.chosen.curselection()):
@@ -205,7 +254,7 @@ class App:
         self.redraw_queue()
 
     def filter_conflicts(self):
-        if self.rotation.active:
+        if self.locked():
             return
         if not self.selected:
             self.set_message(self.status, "status.empty")
@@ -226,20 +275,74 @@ class App:
             details += "\n" + tr("dialog.more", count=len(removed) - 10)
         messagebox.showinfo(tr("dialog.filtered_title"), tr("dialog.filtered_body", count=len(removed), details=details), parent=self.root)
 
+    def clear_queue(self):
+        if self.locked():
+            return
+        self.selected.clear()
+        self.redraw_queue()
+        self.set_message(self.status, "status.queue_cleared")
+
     def start(self):
+        if self.locked():
+            return
         try:
             try:
-                minutes = float(self.minutes.get().replace(",", "."))
+                minutes = 15.0 if self.experimental.get() else float(self.minutes.get().replace(",", "."))
                 count = int(self.concurrency.get())
             except ValueError as error:
-                raise UserValueError("error.numbers") from error
-            self.rotation.start(list(self.selected.values()), minutes, count)
-            self.set_message(self.status, "status.running")
+                raise UserValueError("error.experimental_numbers" if self.experimental.get() else "error.numbers") from error
+            games = list(self.selected.values())
+            experimental = self.experimental.get()
+            self._cancel_event.clear()
+            self._stop_requested = False
+            self.set_message(self.status, "status.starting")
+            self.run_operation("start", lambda: self.rotation.start(games, minutes, count, experimental=experimental))
         except Exception as error:
             self.set_message(self.status, "status.start_error", error=error)
             messagebox.showerror(tr("dialog.start_error"), str(error), parent=self.root)
-        finally:
             self.set_running(self.rotation.active)
+
+    def run_operation(self, kind, operation):
+        if self._operation_busy:
+            return
+        self._operation_busy = True
+        self.set_running(True)
+        def execute():
+            try:
+                operation()
+                error = None
+            except Exception as caught:
+                error = caught
+            self.messages.put(("operation", (kind, error)))
+        threading.Thread(target=execute, daemon=True).start()
+
+    def operation_finished(self, kind, error):
+        self._operation_busy = False
+        if kind in {"tick", "start"}:
+            self._next_tick = time.monotonic() + .5
+        if error is not None:
+            self.set_message(self.status, "error.raw", error=error)
+        elif kind in {"start", "stop"}:
+            self.set_message(self.status, "status.running" if kind == "start" else "status.stopped")
+        if self._stop_requested:
+            self._stop_requested = False
+            if kind != "stop" and self.rotation.active:
+                self.run_operation("stop", self.rotation.stop)
+                return True
+        self.set_running(self.rotation.active)
+        if self._closing:
+            if self.rotation.active:
+                self._closing = False
+                messagebox.showerror(tr("dialog.close_title"), tr("dialog.close_error"), parent=self.root)
+            else:
+                self.root.destroy()
+                return False
+        return True
+
+    def maybe_tick(self):
+        if (not self._operation_busy and self.rotation.running
+                and time.monotonic() >= self._next_tick):
+            self.run_operation("tick", self.rotation.tick)
 
     def set_running(self, active):
         self.start_button.configure(state="disabled" if active else "normal")
@@ -247,19 +350,29 @@ class App:
         self.concurrency_input.configure(state="disabled" if active else "normal")
         self.minutes_input.configure(state="disabled" if active else "normal")
         self.filter_conflicts_button.configure(state="disabled" if active else "normal")
+        if hasattr(self, "clear_queue_button"):
+            self.clear_queue_button.configure(state="disabled" if active else "normal")
+        if hasattr(self, "experimental_input"):
+            self.experimental_input.configure(state="disabled" if active else "normal")
+        if hasattr(self, "language_input"):
+            self.language_input.configure(state="disabled" if getattr(self, "_operation_busy", False) else "readonly")
 
     def stop(self):
-        try:
-            self.rotation.stop()
-            self.set_message(self.status, "status.stopped")
-        except Exception as error:
-            self.set_message(self.status, "status.stop_error", error=error)
-        self.set_running(self.rotation.active)
+        self._cancel_event.set()
+        self.set_message(self.status, "status.stopping")
+        if self._operation_busy:
+            self._stop_requested = True
+        else:
+            self.run_operation("stop", self.rotation.stop)
 
     def update(self):
         try:
             while True:
                 kind, value = self.messages.get_nowait()
+                if kind == "operation":
+                    if self.operation_finished(*value) is False:
+                        return
+                    continue
                 self.loading = False
                 self.refresh.configure(state="normal")
                 if kind == "catalog":
@@ -272,11 +385,7 @@ class App:
                     self.set_message(self.status, "status.catalog_error", error=value)
         except queue.Empty:
             pass
-        try:
-            self.rotation.tick()
-        except Exception as error:
-            self.set_message(self.status, "error.raw", error=error)
-            self.set_running(self.rotation.active)
+        self.maybe_tick()
         seconds = int(self.rotation.elapsed)
         elapsed = f"{seconds // 3600:02}:{seconds // 60 % 60:02}:{seconds % 60:02}"
         games = self.rotation.current_games
@@ -288,14 +397,11 @@ class App:
             self.active_games.delete(0, "end")
             for name in names:
                 self.active_games.insert("end", name)
-        self.root.after(500, self.update)
+        self.root.after(50, self.update)
 
     def close(self):
+        self._closing = True
         self.stop()
-        if self.rotation.active:
-            messagebox.showerror(tr("dialog.close_title"), tr("dialog.close_error"), parent=self.root)
-            return
-        self.root.destroy()
 
 
 if __name__ == "__main__":
