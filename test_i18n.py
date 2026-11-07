@@ -31,6 +31,12 @@ class TranslationTests(unittest.TestCase):
             self.assertEqual(fields(ru), fields(en), key)
             self.assertTrue(ru.strip() and en.strip(), key)
 
+    def test_requested_performance_warning_is_translated(self):
+        set_language("ru")
+        self.assertEqual(tr("app.performance_warning"), "Может снизить производительность системы")
+        set_language("en")
+        self.assertEqual(tr("app.performance_warning"), "May reduce system performance")
+
     def test_dynamic_error_and_nested_message_translate_after_creation(self):
         set_language("ru")
         with self.assertRaises(UserValueError) as captured:

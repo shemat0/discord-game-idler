@@ -11,6 +11,7 @@ from tkinter import ttk, messagebox
 from core import ProcessBackend, Rotation, download_catalog, read_catalog, filter_conflicting_games
 from i18n import Message, UserValueError, tr, set_language, current_language, load_language, save_language
 from version import __version__
+from theme import apply_theme, listbox_options, load_theme, save_theme
 
 
 def cache_directory():
@@ -25,9 +26,12 @@ class App:
         self.cache = cache_directory()
         self.preferences_path = self.cache / "settings.json"
         set_language(load_language(self.preferences_path))
+        self.theme_name = load_theme(self.preferences_path)
+        apply_theme(root, self.theme_name)
         self.catalog_path = self.cache / "catalog.json"
         self._cancel_event = threading.Event()
         self.rotation = Rotation(ProcessBackend(self.cache), cancel_event=self._cancel_event)
+        self.rotation.backend.set_theme(self.theme_name)
         self._operation_busy = False
         self._stop_requested = False
         self._closing = False
@@ -41,7 +45,9 @@ class App:
         self.search.trace_add("write", lambda *_: self.filter())
         self.minutes = tk.StringVar(value="15")
         self.concurrency = tk.StringVar(value="10")
-        self.experimental = tk.BooleanVar(value=False)
+        self.experimental_concurrency = tk.BooleanVar(value=False)
+        self.experimental_timing = tk.BooleanVar(value=False)
+        self.seconds = tk.StringVar(value="10")
         self.status = tk.StringVar()
         self.session = tk.StringVar()
         self.catalog_status = tk.StringVar()
@@ -53,12 +59,19 @@ class App:
         top = ttk.Frame(outer)
         top.pack(fill="x")
         self.label(top, "app.heading", font=("Segoe UI", 22, "bold")).pack(side="left")
+        preferences_row = ttk.Frame(outer)
+        preferences_row.pack(fill="x", pady=(3, 4))
         self.language = tk.StringVar(value="Русский" if current_language() == "ru" else "English")
-        self.language_input = ttk.Combobox(top, values=("Русский", "English"), textvariable=self.language,
+        self.language_input = ttk.Combobox(preferences_row, values=("Русский", "English"), textvariable=self.language,
                                            state="readonly", width=10)
         self.language_input.pack(side="right")
         self.language_input.bind("<<ComboboxSelected>>", self.change_language)
-        ttk.Label(top, text="Язык / Language").pack(side="right", padx=8)
+        ttk.Label(preferences_row, text="Язык / Language").pack(side="right", padx=8)
+        self.theme_choice = tk.StringVar()
+        self.theme_input = ttk.Combobox(preferences_row, textvariable=self.theme_choice, state="readonly", width=10)
+        self.theme_input.pack(side="right", padx=(0, 10))
+        self.theme_input.bind("<<ComboboxSelected>>", self.change_theme)
+        self.label(preferences_row, "app.theme").pack(side="right", padx=8)
         self.label(outer, "app.subtitle", font=("Segoe UI", 10)).pack(anchor="w", pady=(2, 10))
         self.label(outer, "app.intro", wraplength=900).pack(anchor="w", pady=(0, 14))
         toolbar = ttk.Frame(outer)
@@ -82,7 +95,7 @@ class App:
         right = ttk.Frame(middle, padding=(14, 0, 0, 0))
         right.pack(side="left", fill="both")
         self.label(right, "app.queue", font=("Segoe UI", 11, "bold")).pack(anchor="w")
-        self.chosen = tk.Listbox(right, width=28, selectmode="extended", exportselection=False)
+        self.chosen = tk.Listbox(right, width=28, selectmode="extended", exportselection=False, **listbox_options(self.theme_name))
         self.chosen.pack(fill="both", expand=True, pady=6)
         self.button(right, "app.add", command=self.add).pack(fill="x")
         self.button(right, "app.remove", command=self.remove).pack(fill="x", pady=(5, 0))
@@ -90,35 +103,45 @@ class App:
         self.filter_conflicts_button.pack(fill="x", pady=(5, 0))
         self.clear_queue_button = self.button(right, "app.clear_queue", command=self.clear_queue)
         self.clear_queue_button.pack(fill="x", pady=(5, 0))
-        self.experimental_input = ttk.Checkbutton(outer, variable=self.experimental, command=self.change_mode)
-        self._text_widgets.append((self.experimental_input, "app.experimental"))
-        self.experimental_input.pack(anchor="w", pady=(10, 0))
-        self.mode_note = tk.StringVar()
-        ttk.Label(outer, textvariable=self.mode_note, wraplength=900).pack(anchor="w", pady=(3, 0))
         controls = ttk.Frame(outer)
-        controls.pack(fill="x", pady=(16, 8))
-        self.label(controls, "app.concurrent").pack(side="left")
+        controls.pack(fill="x", pady=(12, 6))
+        controls.columnconfigure(4, weight=1)
+        self.label(controls, "app.concurrent").grid(row=0, column=0, sticky="w")
         self.concurrency_input = ttk.Spinbox(controls, from_=1, to=10, width=5, textvariable=self.concurrency)
-        self.concurrency_input.pack(side="left", padx=6)
+        self.concurrency_input.grid(row=0, column=1, padx=6, sticky="w")
         self.max_note = tk.StringVar()
-        ttk.Label(controls, textvariable=self.max_note).pack(side="left")
-        self.start_button = self.button(controls, "app.start", command=self.start)
-        self.start_button.pack(side="right")
-        self.stop_button = self.button(controls, "app.stop", command=self.stop, state="disabled")
-        self.stop_button.pack(side="right", padx=8)
+        ttk.Label(controls, textvariable=self.max_note).grid(row=0, column=2, padx=(0, 10), sticky="w")
+        self.count_experiment_input = ttk.Checkbutton(controls, variable=self.experimental_concurrency,
+                                                      command=self.change_concurrency_mode)
+        self._text_widgets.append((self.count_experiment_input, "app.experiment_count"))
+        self.count_experiment_input.grid(row=0, column=3, sticky="w")
+        self.count_warning = self.label(controls, "app.performance_warning", wraplength=240, style="Warning.TLabel")
+        self.count_warning.grid(row=0, column=4, padx=(10, 0), sticky="w")
         interval = ttk.Frame(outer)
-        interval.pack(fill="x", pady=(0, 5))
-        self.label(interval, "app.interval").pack(side="left")
+        interval.pack(fill="x", pady=(0, 6))
+        interval.columnconfigure(4, weight=1)
+        self.label(interval, "app.interval").grid(row=0, column=0, sticky="w")
         self.minutes_input = ttk.Spinbox(interval, from_=1, to=1440, width=7, textvariable=self.minutes)
-        self.minutes_input.pack(side="left", padx=6)
-        self.label(interval, "app.minutes", wraplength=560).pack(side="left")
-        self.interval_frame = interval
-        self.experimental_interval = self.label(outer, "app.experimental_interval", wraplength=900)
+        self.minutes_input.grid(row=0, column=1, padx=6, sticky="w")
+        self.time_unit = tk.StringVar()
+        ttk.Label(interval, textvariable=self.time_unit).grid(row=0, column=2, padx=(0, 10), sticky="w")
+        self.time_experiment_input = ttk.Checkbutton(interval, variable=self.experimental_timing,
+                                                     command=self.change_timing_mode)
+        self._text_widgets.append((self.time_experiment_input, "app.experiment_time"))
+        self.time_experiment_input.grid(row=0, column=3, sticky="w")
+        self.time_warning = self.label(interval, "app.performance_warning", wraplength=240, style="Warning.TLabel")
+        self.time_warning.grid(row=0, column=4, padx=(10, 0), sticky="w")
+        buttons = ttk.Frame(outer)
+        buttons.pack(fill="x", pady=(0, 4))
+        self.start_button = self.button(buttons, "app.start", command=self.start)
+        self.start_button.pack(side="right")
+        self.stop_button = self.button(buttons, "app.stop", command=self.stop, state="disabled")
+        self.stop_button.pack(side="right", padx=8)
         self.session_label = ttk.Label(outer, textvariable=self.session, font=("Segoe UI", 12, "bold"), wraplength=900)
         self.session_label.pack(anchor="w", pady=6)
         active_frame = ttk.Frame(outer)
         active_frame.pack(fill="x", pady=(0, 6))
-        self.active_games = tk.Listbox(active_frame, height=3, exportselection=False)
+        self.active_games = tk.Listbox(active_frame, height=3, exportselection=False, **listbox_options(self.theme_name))
         active_scroll = ttk.Scrollbar(active_frame, orient="vertical", command=self.active_games.yview)
         self.active_games.configure(yscrollcommand=active_scroll.set)
         active_scroll.pack(side="right", fill="y")
@@ -127,7 +150,8 @@ class App:
         self.label(outer, "app.timer_note", wraplength=900).pack(anchor="w", pady=(8, 0))
         root.protocol("WM_DELETE_WINDOW", self.close)
         self.render_language()
-        self.apply_mode()
+        apply_theme(root, self.theme_name)
+        self.apply_modes()
         self.load_cache()
         root.after(250, self.update)
 
@@ -157,6 +181,9 @@ class App:
         self.tree.heading("exe", text=tr("app.process"))
         for variable, message in self._message_specs.values():
             variable.set(str(message))
+        if hasattr(self, "theme_choice"):
+            self.theme_input.configure(values=(tr("theme.dark"), tr("theme.light")))
+            self.theme_choice.set(tr("theme." + self.theme_name))
 
     def change_language(self, _event=None):
         if getattr(self, "_operation_busy", False):
@@ -170,32 +197,48 @@ class App:
         except OSError as error:
             self.set_message(self.status, "status.language_error", error=error)
 
+    def change_theme(self, _event=None):
+        if getattr(self, "_operation_busy", False):
+            self.theme_choice.set(tr("theme." + self.theme_name))
+            return
+        self.theme_name = "light" if self.theme_choice.get() == tr("theme.light") else "dark"
+        apply_theme(self.root, self.theme_name)
+        try:
+            self.rotation.backend.set_theme(self.theme_name)
+            save_theme(self.preferences_path, self.theme_name)
+        except OSError as error:
+            self.set_message(self.status, "status.theme_error", error=error)
+
     def locked(self):
         return self.rotation.active or getattr(self, "_operation_busy", False)
 
-    def change_mode(self):
+    def change_concurrency_mode(self):
         if self.locked():
-            self.experimental.set(self.rotation.experimental)
+            self.experimental_concurrency.set(self.rotation.experimental_concurrency)
             return
-        if self.experimental.get():
-            self.concurrency.set("100")
-        else:
-            self.concurrency.set("10")
-            self.minutes.set("15")
-        self.apply_mode()
+        if not self.experimental_concurrency.get():
+            try:
+                if int(self.concurrency.get()) > 10:
+                    self.concurrency.set("10")
+            except ValueError:
+                pass  # Preserve editable invalid text for normal validation.
+        self.apply_modes()
 
-    def apply_mode(self):
-        experimental = self.experimental.get()
-        self.concurrency_input.configure(to=100 if experimental else 10)
-        self.set_message(self.max_note, "app.max_experimental" if experimental else "app.max")
-        self.set_message(self.mode_note, "app.experimental_note" if experimental else "app.normal_note")
-        # Both rows occupy the same position, so mode changes do not disturb the queue.
-        if experimental:
-            self.interval_frame.pack_forget()
-            self.experimental_interval.pack(fill="x", before=self.session_label, pady=(0, 5))
-        else:
-            self.experimental_interval.pack_forget()
-            self.interval_frame.pack(fill="x", before=self.session_label, pady=(0, 5))
+    def change_timing_mode(self):
+        if self.locked():
+            self.experimental_timing.set(self.rotation.experimental_timing)
+            return
+        self.apply_modes()
+
+    def apply_modes(self):
+        many = self.experimental_concurrency.get()
+        seconds = self.experimental_timing.get()
+        self.concurrency_input.configure(to=100 if many else 10)
+        self.set_message(self.max_note, "app.count_range", limit=100 if many else 10)
+        self.set_message(self.time_unit, "app.unit_seconds" if seconds else "app.unit_minutes")
+        # Switching the displayed variable preserves each unit's last input.
+        self.minutes_input.configure(textvariable=self.seconds if seconds else self.minutes,
+                                     from_=10 if seconds else 1, to=86400 if seconds else 1440)
 
     def load_cache(self):
         bundled = Path(__file__).resolve().with_name("catalog.json")
@@ -286,17 +329,21 @@ class App:
         if self.locked():
             return
         try:
+            many = self.experimental_concurrency.get()
+            use_seconds = self.experimental_timing.get()
             try:
-                minutes = 15.0 if self.experimental.get() else float(self.minutes.get().replace(",", "."))
+                minutes = 15.0 if use_seconds else float(self.minutes.get().replace(",", "."))
+                seconds = float(self.seconds.get().replace(",", ".")) if use_seconds else 10.0
                 count = int(self.concurrency.get())
             except ValueError as error:
-                raise UserValueError("error.experimental_numbers" if self.experimental.get() else "error.numbers") from error
+                unit = Message("app.unit_seconds" if use_seconds else "app.unit_minutes")
+                raise UserValueError("error.input_parameters", limit=100 if many else 10, unit=unit) from error
             games = list(self.selected.values())
-            experimental = self.experimental.get()
             self._cancel_event.clear()
             self._stop_requested = False
             self.set_message(self.status, "status.starting")
-            self.run_operation("start", lambda: self.rotation.start(games, minutes, count, experimental=experimental))
+            self.run_operation("start", lambda: self.rotation.start(games, minutes, count, experimental_concurrency=many,
+                                                                      experimental_timing=use_seconds, seconds=seconds))
         except Exception as error:
             self.set_message(self.status, "status.start_error", error=error)
             messagebox.showerror(tr("dialog.start_error"), str(error), parent=self.root)
@@ -352,10 +399,13 @@ class App:
         self.filter_conflicts_button.configure(state="disabled" if active else "normal")
         if hasattr(self, "clear_queue_button"):
             self.clear_queue_button.configure(state="disabled" if active else "normal")
-        if hasattr(self, "experimental_input"):
-            self.experimental_input.configure(state="disabled" if active else "normal")
+        for name in ("count_experiment_input", "time_experiment_input"):
+            if hasattr(self, name):
+                getattr(self, name).configure(state="disabled" if active else "normal")
         if hasattr(self, "language_input"):
             self.language_input.configure(state="disabled" if getattr(self, "_operation_busy", False) else "readonly")
+        if hasattr(self, "theme_input"):
+            self.theme_input.configure(state="disabled" if getattr(self, "_operation_busy", False) else "readonly")
 
     def stop(self):
         self._cancel_event.set()
@@ -417,6 +467,5 @@ if __name__ == "__main__":
         messagebox.showinfo(tr("app.title"), tr("dialog.already_open"))
         window.destroy()
         sys.exit(0)
-    ttk.Style().theme_use("vista")
     App(window)
     window.mainloop()

@@ -19,7 +19,7 @@ def main():
     if os.name != "nt" or sys.maxsize <= 2**32:
         raise SystemExit("Build on 64-bit Windows with 64-bit Python.")
     run("-m", "unittest", "discover", "-v", "-p", "test_*.py")
-    run("-m", "py_compile", "app.py", "core.py", "i18n.py", "version.py", "build.py")
+    run("-m", "py_compile", "app.py", "core.py", "i18n.py", "theme.py", "version.py", "build.py")
     output = ROOT / "dist" / ("v" + __version__)
     work = ROOT / "build" / ("v" + __version__)
     output.mkdir(parents=True, exist_ok=True)

@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import threading
 
 from i18n import Message, MessageList, UserValueError, UserRuntimeError, tr
 
@@ -145,6 +146,8 @@ class IdleProcess {
                 Application.EnableVisualStyles();
                 using (Form window = new Form())
                 using (Timer watcher = new Timer()) {
+                    window.BackColor = Color.FromArgb(16, 23, 34);
+                    window.ForeColor = Color.FromArgb(230, 237, 245);
                     window.ClientSize = new Size(460, 140);
                     window.StartPosition = FormStartPosition.CenterScreen;
                     window.FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -154,6 +157,8 @@ class IdleProcess {
                     label.Dock = DockStyle.Fill;
                     label.Padding = new Padding(16);
                     label.Font = new Font("Segoe UI", 10);
+                    label.BackColor = window.BackColor;
+                    label.ForeColor = window.ForeColor;
                     window.Controls.Add(label);
                     string previousText = null;
                     Action translate = delegate {
@@ -166,10 +171,15 @@ class IdleProcess {
                                 text = reader.ReadToEnd();
                             }
                             if (text == previousText) return;
-                            string[] parts = text.Split(new char[] {'\n'}, 2);
-                            if (parts.Length != 2) return;
-                            window.Text = args[1] + " — " + parts[0].TrimEnd('\r');
-                            label.Text = parts[1];
+                            string[] parts = text.Split(new char[] {'\n'}, 3);
+                            if (parts.Length != 3) return;
+                            bool light = parts[0].TrimEnd('\r') == "light";
+                            window.BackColor = light ? Color.FromArgb(246, 248, 251) : Color.FromArgb(16, 23, 34);
+                            window.ForeColor = light ? Color.FromArgb(31, 41, 55) : Color.FromArgb(230, 237, 245);
+                            label.BackColor = window.BackColor;
+                            label.ForeColor = window.ForeColor;
+                            window.Text = args[1] + " — " + parts[1].TrimEnd('\r');
+                            label.Text = parts[2];
                             previousText = text;
                         } catch (IOException) { }
                         catch (UnauthorizedAccessException) { }
@@ -202,20 +212,30 @@ class ProcessBackend:
         # paths canonicalize into LocalCache while this base retains its alias.
         cache.mkdir(parents=True, exist_ok=True)
         self.cache = cache.resolve(strict=True)
+        self.theme = "dark"
+        self._appearance_lock = threading.RLock()
 
     @property
     def helper_language_path(self):
         return self.cache / ("helper-language-" + HELPER_VERSION + ".txt")
 
     def update_language(self):
-        # Atomic replacement means a live helper sees either complete translation.
-        path = self.helper_language_path
-        text = tr("helper.suffix") + "\n" + tr("helper.body")
-        if path.exists() and path.read_text(encoding="utf-8") == text:
-            return
-        temporary = path.with_suffix(".tmp")
-        temporary.write_text(text, encoding="utf-8")
-        temporary.replace(path)
+        # Both language and theme share one atomically replaced watched file.
+        with self._appearance_lock:
+            path = self.helper_language_path
+            text = self.theme + "\n" + tr("helper.suffix") + "\n" + tr("helper.body")
+            if path.exists() and path.read_text(encoding="utf-8") == text:
+                return
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(text, encoding="utf-8")
+            temporary.replace(path)
+
+    def set_theme(self, theme):
+        if theme not in {"light", "dark"}:
+            raise ValueError("Unsupported theme")
+        with self._appearance_lock:
+            self.theme = theme
+            self.update_language()
 
     def compile_helper(self) -> Path:
         helper = self.cache / ("helper-" + HELPER_VERSION + ".exe")
@@ -269,7 +289,8 @@ class Rotation:
     def __init__(self, backend, clock=time.monotonic, cancel_event=None):
         self.backend, self.clock = backend, clock
         self.cancel_event = cancel_event
-        self.experimental = False
+        self.experimental_concurrency = False
+        self.experimental_timing = False
         self.processes = []  # (Game, owned process); failed stops remain tracked.
         self.running = False
         self.games = []
@@ -295,17 +316,20 @@ class Rotation:
     def current(self):
         return self.current_games[0] if self.active else None
 
-    def start(self, games: list[Game], minutes: float, concurrency: int = 1, *, experimental=False):
+    def start(self, games: list[Game], minutes: float, concurrency: int = 1, *,
+              experimental_concurrency=False, experimental_timing=False, seconds=10):
         if self.active:
             raise UserValueError("error.active")
-        if not isinstance(experimental, bool):
+        if not isinstance(experimental_concurrency, bool) or not isinstance(experimental_timing, bool):
             raise UserValueError("error.mode")
-        limit = 100 if experimental else 10
+        limit = 100 if experimental_concurrency else 10
         if isinstance(concurrency, bool) or not isinstance(concurrency, int) or not 1 <= concurrency <= limit:
             raise UserValueError("error.concurrent_limit", limit=limit)
-        if (not games or isinstance(minutes, bool) or not isinstance(minutes, (int, float))
-                or not math.isfinite(minutes) or minutes < 1 or minutes > 1440):
-            raise UserValueError("error.interval")
+        interval_value = seconds if experimental_timing else minutes
+        minimum, maximum = (10, 86400) if experimental_timing else (1, 1440)
+        if (not games or isinstance(interval_value, bool) or not isinstance(interval_value, (int, float))
+                or not math.isfinite(interval_value) or not minimum <= interval_value <= maximum):
+            raise UserValueError("error.seconds_interval" if experimental_timing else "error.interval")
         unique = {}
         for game in games:
             unique.setdefault(game.id, game)
@@ -320,8 +344,9 @@ class Rotation:
         self.games = selected
         self.index = 0
         self.concurrency = concurrency
-        self.experimental = experimental
-        self.interval = 10.0 if experimental else minutes * 60
+        self.experimental_concurrency = experimental_concurrency
+        self.experimental_timing = experimental_timing
+        self.interval = seconds if experimental_timing else minutes * 60
         self.started = self.changed = self.clock()
         self.elapsed = 0.0
         self.running = True

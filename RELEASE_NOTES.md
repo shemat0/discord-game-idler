@@ -1,3 +1,31 @@
+# Discord Game Idler 1.2.0
+
+## English
+
+- A single client with live light/dark theme selection next to language; both preferences are saved together. Running helper windows change theme without restarting.
+- Split the experiment into two independent checkboxes beside their respective fields: concurrency up to 100 and configurable interval in seconds (10–86400).
+- Normal defaults remain 1–10 games and 1–1440 minutes; both experiments are off at startup.
+- Support 100 games for hours, one game at a time every 10 seconds, or 100 games every 10 seconds. A fitting queue stays running.
+- Preserve the other experiment's state and input when toggling. Minutes and seconds retain their own values.
+- Show **May reduce system performance** beside both experimental controls.
+- Preserve RU/EN, background cancellation, full-group dwell timing, rollback, conflict filtering, and queue clearing.
+
+Validation: 69 tests passed, including live theme switching, shared language/theme preferences, and process cleanup. 100-process checks use a simulated backend; the real smoke test remains ten windows. Discord credit remains unconfirmed.
+
+## Русский
+
+- Один клиент с живым переключением светлой/тёмной темы рядом с языком; обе настройки сохраняются вместе. Окна имитации меняют тему без перезапуска.
+- Эксперимент разделён на две независимые галочки возле соответствующих полей: до 100 игр и настраиваемые секунды (10–86400).
+- Обычные пределы остаются прежними: 1–10 игр и 1–1440 минут; при старте обе галочки выключены.
+- Поддерживаются 100 игр на часы, одна игра за раз каждые 10 секунд и 100 игр каждые 10 секунд. Помещающаяся очередь остаётся запущенной.
+- Переключение сохраняет состояние и ввод другого эксперимента. Минуты и секунды хранят отдельные значения.
+- Возле обеих галочек показано **«Может снизить производительность системы»**.
+- Сохранены RU/EN, фоновая отмена, отсчёт после полного запуска группы, откат, фильтрация конфликтов и очистка очереди.
+
+Проверка: 69 тестов прошли, включая смену темы без перезапуска, совместное сохранение языка/темы и остановку процессов. Проверки 100 процессов выполняются на модели; настоящая проверка по-прежнему открывает десять окон. Зачёт Discord не подтверждён.
+
+---
+
 # Discord Game Idler 1.1.1
 
 Changes since the public 1.0.0 release / Изменения с публичного релиза 1.0.0

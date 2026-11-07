@@ -6,6 +6,8 @@ Experimental Windows desktop utility for simulating game processes from Discord'
 
 **Discord recognition and badge/playtime credit are not guaranteed or verified by this app.** Running ten processes does not establish that Discord counts ten games or multiplies playtime. The timer measures only local elapsed time.
 
+Light and dark themes are available in the same client through **Theme**, next to **Language**. The default is dark; warnings use amber in dark mode and brown in light mode.
+
 ## Download and run
 
 From the [latest release](https://github.com/shemat0/discord-game-idler/releases/latest) of [shemat0/discord-game-idler](https://github.com/shemat0/discord-game-idler), download `DiscordGameIdler-<version>-Windows-x64.zip`, extract it, and open `DiscordGameIdler.exe`. Windows 10/11 x64 is supported. Python is bundled; the .NET Framework 4.x compiler must already be available on Windows. Stop and close an older version before opening the new one.
@@ -16,21 +18,28 @@ From the [latest release](https://github.com/shemat0/discord-game-idler/releases
 4. Set **At the same time** to 1–10 (default: 10). Fewer selected games produce fewer processes, with no duplicates. A queue that fits stays running. Larger queues rotate in groups: 25 games at a limit of 10 form groups of 10, 10, and 5, then repeat.
 5. **Stop** or closing the main app stops its processes. Closing any helper window stops the current group. Launch failures roll back the partial group. Failed stops retain the remaining processes for another Stop attempt. After errors there are no automatic relaunches.
 
-## Opt-in experimental mode (1.1.1)
+## Independent experimental controls (1.2.0)
 
-Version **1.1.1** adds experimental group rotation alongside the normal mode.
+Both experiments are **off at startup** and independent. Each checkbox has an adjacent **May reduce system performance** warning.
 
-**Experimental: up to 100 games** is off at startup. Enable it while idle to set the maximum/default concurrency to 100. The normal 1–10 game limit and 1–1440 minute interval remain unchanged when it is off. Disabling experimental mode restores 10 games and 15 minutes. The mode cannot change during a session, an operation, or unfinished cleanup.
+| Checkbox beside the field | Off | On |
+| --- | --- | --- |
+| Concurrent game count | 1–10 games | 1–100 games; your count is preserved when enabling |
+| Group interval | 1–1440 minutes | 10–86400 seconds, configurable; default 10 seconds |
 
-In experimental mode, a fully launched group stays running for **at least 10 seconds** before the next group replaces it. Startup time is excluded from that dwell interval. A queue of 205 games at a limit of 100 produces groups of 100, 100, and 5; a queue that fits stays running instead of repeatedly restarting. Groups never overlap. Duplicate EXE-name conflicts must still be removed.
+Examples: enable only the count experiment for **100 games held for 180 minutes**; enable only the time experiment for **one game at a time, changing every 10 seconds** through a multi-game queue; enable both for **100 games per group, changing every 10 seconds**. If the whole selected queue fits the chosen count, it stays running instead of restarting. One selected game therefore stays running until Stop.
 
-Starting, rotation, and cleanup run in the background. **Stop** cancels between process launches and cleans up the partial group; it waits for any current system operation. Language switching is briefly unavailable while an operation is busy, and remains available between operations. Up to 100 real helper windows may use substantial resources. The automated checks simulate 100 processes and retain the ten-real-process smoke test; they do not open 100 windows.
+Switching time units preserves the separate minutes and seconds inputs, including an hours-long minute value. Toggling either checkbox does not change the other checkbox or its input. Turning the count experiment off clamps a count above 10 back to 10. Both controls are locked during operations, sessions, and unfinished cleanup.
 
-**Discord recognition and credit for ten-second sessions or concurrent games are unconfirmed.** This mode changes local processes, not Discord's server-side counters.
+A group's configured dwell interval starts **after every process in the group has launched**. Larger queues rotate without overlapping groups; a remainder group is not dropped. Starting, rotation, and cleanup run in the background. **Stop** cancels between process launches and waits for the current system operation before cleaning up. Language switching remains available between operations.
+
+The automated checks simulate 100 processes and retain the ten-real-process smoke test; they do not open 100 windows. **Discord recognition and credit for short sessions or concurrent games are unconfirmed.** These controls change local processes, not Discord's server-side counters.
 
 ## Languages and local data
 
 Choose **Язык / Language → Русский or English**. The interface, existing status/error messages, and running helper windows change without restarting the session. Game titles stay as supplied by the catalog. The initial language follows Windows UI language (Russian → RU, otherwise EN); your choice is saved in `%LOCALAPPDATA%\DiscordGameIdler\settings.json`.
+
+Switch **Theme → Dark / Light** live without resetting the queue, session, or timers. Running helper windows follow the choice without restarting. Language and theme are saved together in `settings.json`, and changing one preserves the other. Appearance selectors are briefly locked while a background operation is busy.
 
 The cache, downloaded catalog, generated helper files, and helper translation file are stored in `%LOCALAPPDATA%\DiscordGameIdler`. Packaged Windows environments may redirect that directory to their local cache. The app uses no Discord account token, login, self-bot, or Discord client modification. It does not auto-start a session.
 
@@ -48,7 +57,7 @@ python app.py
 
 ```powershell
 python -m unittest discover -v -p "test_*.py"
-python -m py_compile app.py core.py i18n.py version.py build.py
+python -m py_compile app.py core.py i18n.py theme.py version.py build.py
 ```
 
 Windows integration tests briefly open their own helper windows and close them. They check process/window lifecycle, ten-process cleanup, rotation boundaries, rollback, conflict filtering, translations, saved preferences, and live language switching. They do not verify Discord badge credit.
@@ -63,4 +72,4 @@ python -m venv .venv
 .\.venv\Scripts\python.exe build.py
 ```
 
-The build runs checks and writes `DiscordGameIdler.exe`, the bilingual ZIP, and `SHA256SUMS.txt` under `dist/v1.1.1/`. No GitHub credentials are needed to build. This project is independent of Discord.
+The build runs checks and writes `DiscordGameIdler.exe`, the bilingual ZIP, and `SHA256SUMS.txt` under `dist/v1.2.0/`. No GitHub credentials are needed to build. This project is independent of Discord.

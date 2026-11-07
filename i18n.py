@@ -4,23 +4,29 @@ import ctypes
 import json
 import locale
 import os
+import threading
 from pathlib import Path
 
 STRINGS = {
     "en": {
+        "app.theme": "Theme",
+        "theme.dark": "Dark", "theme.light": "Light",
+        "status.theme_error": "Theme changed, but settings or helper appearance could not be saved: {error}",
+        "app.experiment_count": "Experiment: up to 100",
+        "app.experiment_time": "Experiment: seconds",
+        "app.performance_warning": "May reduce system performance",
+        "app.count_range": "(1–{limit})",
+        "app.unit_minutes": "minutes",
+        "app.unit_seconds": "seconds",
+        "error.seconds_interval": "Select games and an interval between 10 and 86400 seconds.",
+        "error.input_parameters": "Enter a whole game count from 1 to {limit} and a numeric interval in {unit}.",
         "app.clear_queue": "Clear queue",
         "status.queue_cleared": "Queue cleared. Add games from the catalog to begin again.",
-        "app.experimental": "Experimental: up to 100 games • rotate groups every 10 seconds",
-        "app.experimental_interval": "Experimental: fixed 10 seconds after the whole group starts; a queue that fits stays running.",
-        "app.experimental_note": "Up to 100 helper windows may use substantial resources. Discord recognition and credit for short sessions are unconfirmed.",
-        "app.normal_note": "Normal mode: 1–10 games and an interval of 1–1440 minutes.",
-        "app.max_experimental": "games (experimental maximum 100)",
         "status.starting": "Starting processes… Stop cancels after the current launch step.",
         "status.stopping": "Stopping processes… Please wait for cleanup.",
         "error.mode": "Experimental mode must be explicitly enabled or disabled.",
         "error.concurrent_limit": "Concurrent game count must be between 1 and {limit}.",
         "error.cancelled": "Launch cancelled. Cleaning up processes.",
-        "error.experimental_numbers": "Enter a whole concurrent game count from 1 to 100. Experimental group dwell time is fixed at 10 seconds.",
         "app.title": "Discord Game Idler",
         "app.heading": "Game session",
         "app.subtitle": "Experimental game-process simulation for Discord desktop",
@@ -73,19 +79,24 @@ STRINGS = {
         "helper.body": "Process simulation for checking Discord.\nYou may minimize this window. Closing it stops the process.\nGame activity credit is not guaranteed.",
     },
     "ru": {
+        "app.theme": "Тема",
+        "theme.dark": "Тёмная", "theme.light": "Светлая",
+        "status.theme_error": "Тема изменена, но настройки или оформление окон не удалось сохранить: {error}",
+        "app.experiment_count": "Эксперимент: до 100",
+        "app.experiment_time": "Эксперимент: секунды",
+        "app.performance_warning": "Может снизить производительность системы",
+        "app.count_range": "(1–{limit})",
+        "app.unit_minutes": "минут",
+        "app.unit_seconds": "секунд",
+        "error.seconds_interval": "Выберите игры и интервал от 10 до 86400 секунд.",
+        "error.input_parameters": "Введите целое число игр от 1 до {limit} и числовой интервал в единицах: {unit}.",
         "app.clear_queue": "Очистить очередь",
         "status.queue_cleared": "Очередь очищена. Добавьте игры из каталога, чтобы начать заново.",
-        "app.experimental": "Эксперимент: до 100 игр • смена группы каждые 10 секунд",
-        "app.experimental_interval": "Эксперимент: 10 секунд после полного запуска группы; если очередь помещается, игры остаются запущенными.",
-        "app.experimental_note": "До 100 окон имитации могут заметно нагружать компьютер. Распознавание Discord и зачёт коротких сессий не подтверждены.",
-        "app.normal_note": "Обычный режим: 1–10 игр, интервал от 1 до 1440 минут.",
-        "app.max_experimental": "игр (экспериментальный максимум 100)",
         "status.starting": "Запуск процессов… «Остановить» отменит запуск после текущего шага.",
         "status.stopping": "Остановка процессов… Дождитесь завершения очистки.",
         "error.mode": "Экспериментальный режим должен быть явно включён или выключен.",
         "error.concurrent_limit": "Число одновременно запущенных игр: от 1 до {limit}.",
         "error.cancelled": "Запуск отменён. Останавливаем созданные процессы.",
-        "error.experimental_numbers": "Введите целое число одновременно запущенных игр от 1 до 100. В эксперименте группа работает не менее 10 секунд.",
         "app.title": "Discord Game Idler", "app.heading": "Игровая сессия",
         "app.subtitle": "Экспериментальная имитация процессов для настольного Discord",
         "app.intro": "Зачёт значков не подтверждён. Часы идут в реальном времени.\nДля этих значков Discord требует включить персонализацию данных.",
@@ -199,22 +210,43 @@ def os_language() -> str:
         return "en"
 
 
-def load_language(path: Path, fallback: str | None = None) -> str:
-    default = fallback if fallback in STRINGS else os_language()
+_preferences_lock = threading.RLock()
+
+
+def read_preferences(path: Path, *, strict_io=False) -> dict:
     try:
         if path.stat().st_size > 4096:
-            return default
+            return {}
         data = json.loads(path.read_text(encoding="utf-8"))
-        language = data.get("language") if isinstance(data, dict) else None
-        return language if isinstance(language, str) and language in STRINGS else default
-    except (OSError, ValueError, UnicodeError):
-        return default
+        return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except OSError:
+        if strict_io:
+            raise
+        return {}
+    except (ValueError, UnicodeError):
+        return {}
+
+
+def load_language(path: Path, fallback: str | None = None) -> str:
+    default = fallback if fallback in STRINGS else os_language()
+    language = read_preferences(path).get("language")
+    return language if isinstance(language, str) and language in STRINGS else default
+
+
+def save_preference(path: Path, key: str, value: str) -> None:
+    # Serialize read/merge/write so language and theme cannot erase each other.
+    with _preferences_lock:
+        preferences = read_preferences(path, strict_io=True)
+        preferences[key] = value
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(preferences), encoding="utf-8")
+        temporary.replace(path)
 
 
 def save_language(path: Path, language: str) -> None:
     if language not in STRINGS:
         raise ValueError("Unsupported language")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps({"language": language}), encoding="utf-8")
-    temporary.replace(path)
+    save_preference(path, "language", language)
