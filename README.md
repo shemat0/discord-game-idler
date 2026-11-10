@@ -18,7 +18,7 @@ From the [latest release](https://github.com/shemat0/discord-game-idler/releases
 4. Set **At the same time** to 1–10 (default: 10). Fewer selected games produce fewer processes, with no duplicates. A queue that fits stays running. Larger queues rotate in groups: 25 games at a limit of 10 form groups of 10, 10, and 5, then repeat.
 5. **Stop** or closing the main app stops its processes. Closing any helper window stops the current group. Launch failures roll back the partial group. Failed stops retain the remaining processes for another Stop attempt. After errors there are no automatic relaunches.
 
-## Independent experimental controls (1.3.1)
+## Independent experimental controls (1.3.2)
 
 Both experiments are **off at startup** and independent. Each checkbox has an adjacent **May reduce system performance** warning. Turning either mode on also shows a warning about increased system load.
 
@@ -74,4 +74,4 @@ python -m venv .venv
 .\.venv\Scripts\python.exe build.py
 ```
 
-The build runs checks and writes `DiscordGameIdler.exe`, the bilingual ZIP, and `SHA256SUMS.txt` under `dist/v1.3.1/`. No GitHub credentials are needed to build. This project is independent of Discord.
+The build runs checks and writes `DiscordGameIdler.exe`, the bilingual ZIP, and `SHA256SUMS.txt` under `dist/v1.3.2/`. No GitHub credentials are needed to build. This project is independent of Discord.

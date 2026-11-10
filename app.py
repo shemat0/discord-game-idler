@@ -250,6 +250,7 @@ class App:
 
     def confirm_super_risks(self):
         dialog = tk.Toplevel(self.root)
+        dialog.withdraw()
         dialog.title(tr("app.super_title"))
         dialog.transient(self.root)
         dialog.resizable(False, False)
@@ -276,6 +277,11 @@ class App:
         enable = ttk.Button(buttons, text=tr("app.enable"), command=accept, state="disabled")
         enable.pack(side="left")
         dialog.bind("<Escape>", lambda _event: dialog.destroy())
+        dialog.update_idletasks()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - dialog.winfo_reqwidth()) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - dialog.winfo_reqheight()) // 2
+        dialog.geometry(f"+{x}+{y}")
+        dialog.deiconify()
         dialog.wait_visibility()
         dialog.grab_set()
         checkbox.focus_set()

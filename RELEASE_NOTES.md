@@ -1,3 +1,15 @@
+# Discord Game Idler 1.3.2
+
+## English
+
+- The super experiment confirmation dialog opens centered over the main window.
+
+## Русский
+
+- Окно подтверждения суперэксперимента открывается по центру главного окна.
+
+---
+
 # Discord Game Idler 1.3.1
 
 ## English

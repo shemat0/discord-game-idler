@@ -388,6 +388,7 @@ class OperationTests(unittest.TestCase):
 
         root = tk.Tk()
         try:
+            root.geometry("620x420+180+120")
             root.update()
             app = App.__new__(App)
             app.root = root
@@ -398,6 +399,10 @@ class OperationTests(unittest.TestCase):
                 _, checkbox, buttons = panel.winfo_children()
                 cancel, enable = buttons.winfo_children()
                 try:
+                    self.assertLess(abs(dialog.winfo_rootx() + dialog.winfo_width() / 2
+                                        - root.winfo_rootx() - root.winfo_width() / 2), 40)
+                    self.assertLess(abs(dialog.winfo_rooty() + dialog.winfo_height() / 2
+                                        - root.winfo_rooty() - root.winfo_height() / 2), 40)
                     states.append(enable.instate(["disabled"]))
                     enable.invoke()
                     states.append(bool(dialog.winfo_exists()))
