@@ -79,6 +79,26 @@ class RotationTests(unittest.TestCase):
         self.rotation = Rotation(self.backend, clock=lambda: self.now)
         self.games = [Game("1", "A", "a.exe"), Game("2", "B", "b.exe")]
 
+    def test_super_experiment_requires_opt_in_and_caps_at_1000(self):
+        games = [Game(str(i), f"Game {i}", f"test-{i}.exe") for i in range(1001)]
+        with self.assertRaises(ValueError):
+            self.rotation.start(games, 15, 1000, super_experimental=True)
+        with self.assertRaises(ValueError):
+            self.rotation.start(games, 15, 101, experimental_concurrency=True)
+        with self.assertRaises(ValueError):
+            self.rotation.start(games, 15, 1001, experimental_concurrency=True, super_experimental=True)
+        self.assertFalse(self.backend.children)
+        self.rotation.start(games, 15, 1000, experimental_concurrency=True, super_experimental=True)
+        try:
+            self.assertEqual(len(self.rotation.current_games), 1000)
+            self.assertEqual(self.rotation.interval, 900)
+            self.now += 900
+            self.rotation.tick()
+            self.assertEqual(self.rotation.current_games, games[1000:])
+            self.assertTrue(all(child.dead for child in self.backend.children[:1000]))
+        finally:
+            self.rotation.stop()
+
     def test_rotation_boundary_and_stop(self):
         self.rotation.start(self.games, 1)
         self.now += 59.9
@@ -350,6 +370,7 @@ class ClearQueueTests(unittest.TestCase):
         app._operation_busy = busy
         app.selected = {game.id: game for game in selected}
         app.chosen, app.status, app.search = Mock(), Mock(), Mock()
+        app.queue_heading = Mock()
         app.games = list(selected)
         return app
 

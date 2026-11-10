@@ -46,9 +46,12 @@ class App:
         self.minutes = tk.StringVar(value="15")
         self.concurrency = tk.StringVar(value="10")
         self.experimental_concurrency = tk.BooleanVar(value=False)
+        self.super_experimental = tk.BooleanVar(value=False)
         self.experimental_timing = tk.BooleanVar(value=False)
         self.seconds = tk.StringVar(value="10")
         self.status = tk.StringVar()
+        self.queue_heading = tk.StringVar()
+        self.set_message(self.queue_heading, "app.queue_count", count=0)
         self.session = tk.StringVar()
         self.catalog_status = tk.StringVar()
         self.set_message(self.status, "status.initial")
@@ -94,7 +97,7 @@ class App:
         self.tree.bind("<Double-1>", lambda _: self.add())
         right = ttk.Frame(middle, padding=(14, 0, 0, 0))
         right.pack(side="left", fill="both")
-        self.label(right, "app.queue", font=("Segoe UI", 11, "bold")).pack(anchor="w")
+        ttk.Label(right, textvariable=self.queue_heading, font=("Segoe UI", 11, "bold")).pack(anchor="w")
         self.chosen = tk.Listbox(right, width=28, selectmode="extended", exportselection=False, **listbox_options(self.theme_name))
         self.chosen.pack(fill="both", expand=True, pady=6)
         self.button(right, "app.add", command=self.add).pack(fill="x")
@@ -117,6 +120,12 @@ class App:
         self.count_experiment_input.grid(row=0, column=3, sticky="w")
         self.count_warning = self.label(controls, "app.performance_warning", wraplength=240, style="Warning.TLabel")
         self.count_warning.grid(row=0, column=4, padx=(10, 0), sticky="w")
+        self.super_experiment_input = ttk.Checkbutton(controls, variable=self.super_experimental,
+                                                      command=self.change_super_mode)
+        self._text_widgets.append((self.super_experiment_input, "app.experiment_super"))
+        self.super_experiment_input.grid(row=1, column=3, sticky="w")
+        self.super_warning = self.label(controls, "app.super_warning", wraplength=240, style="Warning.TLabel")
+        self.super_warning.grid(row=1, column=4, padx=(10, 0), pady=(4, 0), sticky="w")
         interval = ttk.Frame(outer)
         interval.pack(fill="x", pady=(0, 6))
         interval.columnconfigure(4, weight=1)
@@ -217,12 +226,31 @@ class App:
             self.experimental_concurrency.set(self.rotation.experimental_concurrency)
             return
         if not self.experimental_concurrency.get():
-            try:
-                if int(self.concurrency.get()) > 10:
-                    self.concurrency.set("10")
-            except ValueError:
-                pass  # Preserve editable invalid text for normal validation.
+            self.super_experimental.set(False)
+            self.clamp_concurrency(10)
         self.apply_modes()
+
+    def change_super_mode(self):
+        if self.locked():
+            self.super_experimental.set(self.rotation.super_experimental)
+            return
+        if not self.experimental_concurrency.get():
+            self.super_experimental.set(False)
+        if not self.super_experimental.get():
+            self.clamp_concurrency(self.count_limit())
+        self.apply_modes()
+
+    def clamp_concurrency(self, limit):
+        try:
+            if int(self.concurrency.get()) > limit:
+                self.concurrency.set(str(limit))
+        except ValueError:
+            pass  # Preserve editable invalid text for normal validation.
+
+    def count_limit(self):
+        if not self.experimental_concurrency.get():
+            return 10
+        return 1000 if self.super_experimental.get() else 100
 
     def change_timing_mode(self):
         if self.locked():
@@ -233,8 +261,14 @@ class App:
     def apply_modes(self):
         many = self.experimental_concurrency.get()
         seconds = self.experimental_timing.get()
-        self.concurrency_input.configure(to=100 if many else 10)
-        self.set_message(self.max_note, "app.count_range", limit=100 if many else 10)
+        limit = self.count_limit()
+        self.concurrency_input.configure(to=limit)
+        self.set_message(self.max_note, "app.count_range", limit=limit)
+        for widget in (self.super_experiment_input, self.super_warning):
+            if many:
+                widget.grid()
+            else:
+                widget.grid_remove()
         self.set_message(self.time_unit, "app.unit_seconds" if seconds else "app.unit_minutes")
         # Switching the displayed variable preserves each unit's last input.
         self.minutes_input.configure(textvariable=self.seconds if seconds else self.minutes,
@@ -277,6 +311,7 @@ class App:
                 self.tree.insert("", "end", iid=game.id, values=(game.name, game.executable))
 
     def redraw_queue(self):
+        self.set_message(self.queue_heading, "app.queue_count", count=len(self.selected))
         self.chosen.delete(0, "end")
         for game in self.selected.values():
             self.chosen.insert("end", game.name)
@@ -330,6 +365,7 @@ class App:
             return
         try:
             many = self.experimental_concurrency.get()
+            super_mode = self.super_experimental.get()
             use_seconds = self.experimental_timing.get()
             try:
                 minutes = 15.0 if use_seconds else float(self.minutes.get().replace(",", "."))
@@ -337,13 +373,14 @@ class App:
                 count = int(self.concurrency.get())
             except ValueError as error:
                 unit = Message("app.unit_seconds" if use_seconds else "app.unit_minutes")
-                raise UserValueError("error.input_parameters", limit=100 if many else 10, unit=unit) from error
+                raise UserValueError("error.input_parameters", limit=self.count_limit(), unit=unit) from error
             games = list(self.selected.values())
             self._cancel_event.clear()
             self._stop_requested = False
             self.set_message(self.status, "status.starting")
             self.run_operation("start", lambda: self.rotation.start(games, minutes, count, experimental_concurrency=many,
-                                                                      experimental_timing=use_seconds, seconds=seconds))
+                                                                      experimental_timing=use_seconds, seconds=seconds,
+                                                                      super_experimental=super_mode))
         except Exception as error:
             self.set_message(self.status, "status.start_error", error=error)
             messagebox.showerror(tr("dialog.start_error"), str(error), parent=self.root)
@@ -399,7 +436,7 @@ class App:
         self.filter_conflicts_button.configure(state="disabled" if active else "normal")
         if hasattr(self, "clear_queue_button"):
             self.clear_queue_button.configure(state="disabled" if active else "normal")
-        for name in ("count_experiment_input", "time_experiment_input"):
+        for name in ("count_experiment_input", "time_experiment_input", "super_experiment_input"):
             if hasattr(self, name):
                 getattr(self, name).configure(state="disabled" if active else "normal")
         if hasattr(self, "language_input"):

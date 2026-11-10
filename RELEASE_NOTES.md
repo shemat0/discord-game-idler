@@ -1,3 +1,39 @@
+# Discord Game Idler 1.3.0
+
+## English
+
+- Packaged helpers use compact native Win32 windows with a 310 × 105 pixel client area and lower memory use.
+- Enable the concurrent game experiment to reveal a separate super experiment. It raises the cap to 1000 and keeps the timing mode and interval independent.
+- The checkbox warns that the mode may work incorrectly with your system and use more than 1 GB of RAM.
+
+High counts are tested with simulated processes. Discord credit remains unconfirmed.
+
+## Русский
+
+- В сборку входят компактные нативные окна Win32 с клиентской областью 310 × 105 пикселей и меньшим расходом памяти.
+- В эксперименте количества доступна отдельная галочка суперэксперимента. Она поднимает лимит до 1000 и сохраняет настройки интервала.
+- Возле галочки есть предупреждение о возможной некорректной работе с системой и потреблении больше 1 ГБ ОЗУ.
+
+Большие группы проверяются на модели процессов. Зачёт активности Discord не подтверждён.
+
+---
+
+# Discord Game Idler 1.2.1
+
+## English
+
+- Show the total number of queued games in the queue heading.
+- Update the count after adding, removing, clearing or filtering conflicting games; keep it translated when switching languages.
+- Preserve the unified light/dark theme client and independent experimental controls.
+
+## Русский
+
+- Добавлен счётчик общего количества игр в заголовке очереди.
+- Счётчик обновляется при добавлении, удалении, очистке и фильтрации конфликтов; переводится при смене языка.
+- Сохранены единый клиент со светлой/тёмной темами и независимые экспериментальные настройки.
+
+---
+
 # Discord Game Idler 1.2.0
 
 ## English

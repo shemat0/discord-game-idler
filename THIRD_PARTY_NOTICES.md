@@ -19,8 +19,7 @@ Verbatim notices copied from the installed distributions are included in
 [`licenses/`](licenses/): Python's complete `LICENSE.txt`, Tcl/Tk 9.0.4's
 `license.terms` files, and PyInstaller 6.22.3's `COPYING.txt` (including its
 bootloader exception). These notices are included in the ZIP and embedded EXE.
-The small runtime helper is generated from this repository's `core.py`, using
-the .NET Framework compiler already installed on Windows.
+The Windows package bundles the native helper built from `helper.c`. Source runs can use the managed fallback in `core.py`, compiled with the Windows .NET Framework compiler.
 
 ---
 

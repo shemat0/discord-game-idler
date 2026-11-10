@@ -10,7 +10,7 @@ Light and dark themes are available in the same client through **Theme**, next t
 
 ## Download and run
 
-From the [latest release](https://github.com/shemat0/discord-game-idler/releases/latest) of [shemat0/discord-game-idler](https://github.com/shemat0/discord-game-idler), download `DiscordGameIdler-<version>-Windows-x64.zip`, extract it, and open `DiscordGameIdler.exe`. Windows 10/11 x64 is supported. Python is bundled; the .NET Framework 4.x compiler must already be available on Windows. Stop and close an older version before opening the new one.
+From the [latest release](https://github.com/shemat0/discord-game-idler/releases/latest) of [shemat0/discord-game-idler](https://github.com/shemat0/discord-game-idler), download `DiscordGameIdler-<version>-Windows-x64.zip`, extract it, and open `DiscordGameIdler.exe`. Windows 10/11 x64 is supported. Python and the compact native Windows helper are bundled. Stop and close an older version before opening the new one.
 
 1. Open Discord desktop. Discord's [badge documentation](https://support.discord.com/hc/en-us/articles/44369363856663-Discord-Profile-Badges-What-Each-Badge-Means) says these badges require **Use data to personalize my Discord experience**. Check your game activity settings as well.
 2. Search for games and click **Add selected**. After bulk selection, click **Remove conflicts** to retain the first game for each EXE basename. Matching ignores folders and letter case; the dialog shows removal totals and up to ten names. **Clear queue** empties the whole queue while idle, without changing the catalog or search; it is disabled during operations, sessions, or unfinished cleanup.
@@ -26,6 +26,8 @@ Both experiments are **off at startup** and independent. Each checkbox has an ad
 | --- | --- | --- |
 | Concurrent game count | 1–10 games | 1–100 games; your count is preserved when enabling |
 | Group interval | 1–1440 minutes | 10–86400 seconds, configurable; default 10 seconds |
+
+After enabling the concurrent game experiment, a **Super experiment: up to 1000** checkbox appears below it. It starts unchecked and raises the cap to 1000 without changing the interval. **It may work incorrectly with your system and use more than 1 GB of RAM.** Turning it off clamps the count to 100. Turning the concurrent game experiment off clears the super experiment and clamps the count to 10.
 
 Examples: enable only the count experiment for **100 games held for 180 minutes**; enable only the time experiment for **one game at a time, changing every 10 seconds** through a multi-game queue; enable both for **100 games per group, changing every 10 seconds**. If the whole selected queue fits the chosen count, it stays running instead of restarting. One selected game therefore stays running until Stop.
 
@@ -47,7 +49,7 @@ The bundled catalog is a reduced public snapshot dated **2026-11-04** with 10,44
 
 ## Run from source
 
-Use 64-bit Windows and Python 3.14 with Tkinter. Runtime code uses the Python standard library.
+Use 64-bit Windows and Python 3.14 with Tkinter. Source runs use the built native helper when available, with the Windows .NET Framework 4.x compiler as a fallback.
 
 ```powershell
 python app.py
@@ -64,7 +66,7 @@ Windows integration tests briefly open their own helper windows and close them. 
 
 ## Build a release
 
-The tested toolchain is Python 3.14.7 x64 and the versions in `requirements-build.txt`.
+Build with Python 3.14 x64, the packages in `requirements-build.txt`, and Visual Studio Build Tools with the x64 C++ toolset and Windows SDK.
 
 ```powershell
 python -m venv .venv
@@ -72,4 +74,4 @@ python -m venv .venv
 .\.venv\Scripts\python.exe build.py
 ```
 
-The build runs checks and writes `DiscordGameIdler.exe`, the bilingual ZIP, and `SHA256SUMS.txt` under `dist/v1.2.0/`. No GitHub credentials are needed to build. This project is independent of Discord.
+The build runs checks and writes `DiscordGameIdler.exe`, the bilingual ZIP, and `SHA256SUMS.txt` under `dist/v1.3.0/`. No GitHub credentials are needed to build. This project is independent of Discord.

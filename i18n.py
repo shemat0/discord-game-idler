@@ -9,6 +9,9 @@ from pathlib import Path
 
 STRINGS = {
     "en": {
+        "app.experiment_super": "Super experiment: up to 1000",
+        "app.super_warning": "May work incorrectly with your system and use more than 1 GB of RAM.",
+        "app.queue_count": "Game queue: {count}",
         "app.theme": "Theme",
         "theme.dark": "Dark", "theme.light": "Light",
         "status.theme_error": "Theme changed, but settings or helper appearance could not be saved: {error}",
@@ -79,6 +82,9 @@ STRINGS = {
         "helper.body": "Process simulation for checking Discord.\nYou may minimize this window. Closing it stops the process.\nGame activity credit is not guaranteed.",
     },
     "ru": {
+        "app.experiment_super": "Суперэксперимент: до 1000",
+        "app.super_warning": "Может некорректно работать с системой и потреблять больше 1 ГБ ОЗУ.",
+        "app.queue_count": "Очередь игр: {count}",
         "app.theme": "Тема",
         "theme.dark": "Тёмная", "theme.light": "Светлая",
         "status.theme_error": "Тема изменена, но настройки или оформление окон не удалось сохранить: {error}",

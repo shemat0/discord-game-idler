@@ -212,12 +212,17 @@ class ProcessBackend:
         # paths canonicalize into LocalCache while this base retains its alias.
         cache.mkdir(parents=True, exist_ok=True)
         self.cache = cache.resolve(strict=True)
+        directory = Path(__file__).resolve().parent
+        candidates = (directory / "helper-native.exe", directory / "build" / "native" / "helper-native.exe")
+        self.native_helper = next((path for path in candidates if path.is_file()), None)
+        self.helper_version = (hashlib.sha256(self.native_helper.read_bytes()).hexdigest()[:16]
+                               if self.native_helper else HELPER_VERSION)
         self.theme = "dark"
         self._appearance_lock = threading.RLock()
 
     @property
     def helper_language_path(self):
-        return self.cache / ("helper-language-" + HELPER_VERSION + ".txt")
+        return self.cache / ("helper-language-" + self.helper_version + ".txt")
 
     def update_language(self):
         # Both language and theme share one atomically replaced watched file.
@@ -238,6 +243,8 @@ class ProcessBackend:
             self.update_language()
 
     def compile_helper(self) -> Path:
+        if self.native_helper:
+            return self.native_helper
         helper = self.cache / ("helper-" + HELPER_VERSION + ".exe")
         source = self.cache / ("helper-" + HELPER_VERSION + ".cs")
         self.cache.mkdir(parents=True, exist_ok=True)
@@ -263,7 +270,7 @@ class ProcessBackend:
         helper = self.compile_helper()
         self.update_language()
         key = hashlib.sha256(game.id.encode()).hexdigest()[:16]
-        root = (self.cache / "processes" / HELPER_VERSION / key).resolve()
+        root = (self.cache / "processes" / self.helper_version / key).resolve()
         if not root.is_relative_to(self.cache):
             raise UserValueError("error.path_escape")
         target = (root / safe).resolve()
@@ -290,6 +297,7 @@ class Rotation:
         self.backend, self.clock = backend, clock
         self.cancel_event = cancel_event
         self.experimental_concurrency = False
+        self.super_experimental = False
         self.experimental_timing = False
         self.processes = []  # (Game, owned process); failed stops remain tracked.
         self.running = False
@@ -317,12 +325,13 @@ class Rotation:
         return self.current_games[0] if self.active else None
 
     def start(self, games: list[Game], minutes: float, concurrency: int = 1, *,
-              experimental_concurrency=False, experimental_timing=False, seconds=10):
+              experimental_concurrency=False, experimental_timing=False, seconds=10, super_experimental=False):
         if self.active:
             raise UserValueError("error.active")
-        if not isinstance(experimental_concurrency, bool) or not isinstance(experimental_timing, bool):
+        if (not all(isinstance(flag, bool) for flag in (experimental_concurrency, experimental_timing, super_experimental))
+                or (super_experimental and not experimental_concurrency)):
             raise UserValueError("error.mode")
-        limit = 100 if experimental_concurrency else 10
+        limit = 1000 if super_experimental else 100 if experimental_concurrency else 10
         if isinstance(concurrency, bool) or not isinstance(concurrency, int) or not 1 <= concurrency <= limit:
             raise UserValueError("error.concurrent_limit", limit=limit)
         interval_value = seconds if experimental_timing else minutes
@@ -345,6 +354,7 @@ class Rotation:
         self.index = 0
         self.concurrency = concurrency
         self.experimental_concurrency = experimental_concurrency
+        self.super_experimental = super_experimental
         self.experimental_timing = experimental_timing
         self.interval = seconds if experimental_timing else minutes * 60
         self.started = self.changed = self.clock()

@@ -183,7 +183,9 @@ class OperationTests(unittest.TestCase):
         app.messages = queue.Queue()
         app.status = Mock()
         app.root = Mock()
-        for name in ("start_button", "stop_button", "concurrency_input", "minutes_input", "filter_conflicts_button", "count_experiment_input", "time_experiment_input", "language_input"):
+        app.super_experimental = Mock()
+        app.super_experimental.get.return_value = False
+        for name in ("start_button", "stop_button", "concurrency_input", "minutes_input", "filter_conflicts_button", "count_experiment_input", "time_experiment_input", "super_experiment_input", "super_warning", "language_input"):
             setattr(app, name, Mock())
         return app
 
@@ -295,14 +297,80 @@ class OperationTests(unittest.TestCase):
         app.minutes.get.assert_not_called()
         rotation.stop()
 
-    def test_both_controls_disabled_during_operations(self):
+    def test_all_experiment_controls_disabled_during_operations(self):
         app = self.fake_app(Rotation(FakeBackend()), threading.Event())
         app.set_running(True)
         app.count_experiment_input.configure.assert_called_with(state="disabled")
         app.time_experiment_input.configure.assert_called_with(state="disabled")
+        app.super_experiment_input.configure.assert_called_with(state="disabled")
         app.set_running(False)
         app.count_experiment_input.configure.assert_called_with(state="normal")
         app.time_experiment_input.configure.assert_called_with(state="normal")
+        app.super_experiment_input.configure.assert_called_with(state="normal")
+
+    def test_super_start_passes_opt_in_and_preserves_minutes(self):
+        rotation = Rotation(FakeBackend())
+        rotation.start = Mock()
+        app = self.fake_app(rotation, threading.Event())
+        app.experimental_concurrency, app.experimental_timing = Mock(), Mock()
+        app.experimental_concurrency.get.return_value = True
+        app.experimental_timing.get.return_value = False
+        app.super_experimental.get.return_value = True
+        app.concurrency, app.minutes = Mock(), Mock()
+        app.concurrency.get.return_value, app.minutes.get.return_value = "1000", "180"
+        app.selected = {game.id: game for game in games(3)}
+        app.run_operation = Mock()
+        app.start()
+        app.run_operation.call_args.args[1]()
+        rotation.start.assert_called_once_with(games(3), 180.0, 1000, experimental_concurrency=True,
+                                              experimental_timing=False, seconds=10.0, super_experimental=True)
+
+    @unittest.skipUnless(os.name == "nt", "Windows Tk layout")
+    def test_super_control_unlocks_and_clamps_without_changing_timing(self):
+        import tkinter as tk
+        previous = current_language()
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("app.cache_directory", return_value=Path(directory)):
+                root = tk.Tk()
+                root.withdraw()
+                try:
+                    app = App(root)
+                    self.assertFalse(app.super_experiment_input.winfo_manager())
+                    self.assertEqual(app.count_limit(), 10)
+                    app.experimental_timing.set(True)
+                    app.minutes.set("180")
+                    app.seconds.set("25")
+                    app.change_timing_mode()
+                    app.experimental_concurrency.set(True)
+                    app.change_concurrency_mode()
+                    self.assertEqual(app.super_experiment_input.winfo_manager(), "grid")
+                    self.assertEqual(app.count_limit(), 100)
+                    app.super_experimental.set(True)
+                    app.change_super_mode()
+                    self.assertEqual(app.count_limit(), 1000)
+                    for language in ("ru", "en"):
+                        set_language(language)
+                        app.render_language()
+                        root.update_idletasks()
+                        self.assertEqual(app.super_warning.cget("text"), tr("app.super_warning"))
+                        self.assertLessEqual(app.super_experiment_input.master.winfo_reqwidth(), 760)
+                    app.concurrency.set("1000")
+                    app.super_experimental.set(False)
+                    app.change_super_mode()
+                    self.assertEqual(app.concurrency.get(), "100")
+                    app.super_experimental.set(True)
+                    app.change_super_mode()
+                    app.experimental_concurrency.set(False)
+                    app.change_concurrency_mode()
+                    self.assertFalse(app.super_experimental.get())
+                    self.assertFalse(app.super_warning.winfo_manager())
+                    self.assertEqual(app.concurrency.get(), "10")
+                    self.assertTrue(app.experimental_timing.get())
+                    self.assertEqual((app.minutes.get(), app.seconds.get()), ("180", "25"))
+                    self.assertFalse(app.rotation.active)
+                finally:
+                    root.destroy()
+                    set_language(previous)
 
     @unittest.skipUnless(os.name == "nt", "Windows Tk layout")
     def test_bilingual_adjacent_warnings_fit_minimum_width_without_activity(self):
