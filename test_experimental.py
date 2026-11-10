@@ -183,6 +183,7 @@ class OperationTests(unittest.TestCase):
         app.messages = queue.Queue()
         app.status = Mock()
         app.root = Mock()
+        app.warn_about_performance = Mock()
         app.super_experimental = Mock()
         app.super_experimental.get.return_value = False
         for name in ("start_button", "stop_button", "concurrency_input", "minutes_input", "filter_conflicts_button", "count_experiment_input", "time_experiment_input", "super_experiment_input", "super_warning", "language_input"):
@@ -257,6 +258,7 @@ class OperationTests(unittest.TestCase):
         app.change_concurrency_mode()
         app.change_timing_mode()
         self.assertEqual(app.apply_modes.call_count, 3)
+        self.assertEqual(app.warn_about_performance.call_count, 2)
 
     def test_time_toggle_restores_separate_minutes_and_seconds_inputs(self):
         app = self.fake_app(Rotation(FakeBackend()), threading.Event())
@@ -273,6 +275,7 @@ class OperationTests(unittest.TestCase):
         app.change_timing_mode()
         self.assertIs(app.minutes_input.configure.call_args.kwargs["textvariable"], app.minutes)
         self.assertEqual(app.minutes_input.configure.call_args.kwargs["to"], 1440)
+        app.warn_about_performance.assert_called_once_with()
         app.minutes.set.assert_not_called()
         app.seconds.set.assert_not_called()
         app.experimental_concurrency.set.assert_not_called()
@@ -326,7 +329,9 @@ class OperationTests(unittest.TestCase):
                                               experimental_timing=False, seconds=10.0, super_experimental=True)
 
     @unittest.skipUnless(os.name == "nt", "Windows Tk layout")
-    def test_super_control_unlocks_and_clamps_without_changing_timing(self):
+    @patch.object(App, "warn_about_performance")
+    @patch.object(App, "confirm_super_risks", side_effect=[False, True, True])
+    def test_super_control_unlocks_and_clamps_without_changing_timing(self, confirm, _warn):
         import tkinter as tk
         previous = current_language()
         with tempfile.TemporaryDirectory() as directory:
@@ -345,6 +350,10 @@ class OperationTests(unittest.TestCase):
                     app.change_concurrency_mode()
                     self.assertEqual(app.super_experiment_input.winfo_manager(), "grid")
                     self.assertEqual(app.count_limit(), 100)
+                    app.super_experiment_input.invoke()
+                    self.assertFalse(app.super_experimental.get())
+                    self.assertEqual(app.count_limit(), 100)
+                    confirm.assert_called_once_with()
                     app.super_experimental.set(True)
                     app.change_super_mode()
                     self.assertEqual(app.count_limit(), 1000)
@@ -368,9 +377,49 @@ class OperationTests(unittest.TestCase):
                     self.assertTrue(app.experimental_timing.get())
                     self.assertEqual((app.minutes.get(), app.seconds.get()), ("180", "25"))
                     self.assertFalse(app.rotation.active)
+                    self.assertEqual(confirm.call_count, 3)
                 finally:
                     root.destroy()
                     set_language(previous)
+
+    @unittest.skipUnless(os.name == "nt", "Windows Tk dialog")
+    def test_super_confirmation_requires_checkbox(self):
+        import tkinter as tk
+
+        root = tk.Tk()
+        try:
+            root.update()
+            app = App.__new__(App)
+            app.root = root
+            states = []
+
+            def interact(dialog):
+                panel = dialog.winfo_children()[0]
+                _, checkbox, buttons = panel.winfo_children()
+                cancel, enable = buttons.winfo_children()
+                try:
+                    states.append(enable.instate(["disabled"]))
+                    enable.invoke()
+                    states.append(bool(dialog.winfo_exists()))
+                    checkbox.invoke()
+                    states.append(enable.instate(["!disabled"]))
+                    checkbox.invoke()
+                    states.append(enable.instate(["disabled"]))
+                    if accept:
+                        checkbox.invoke()
+                        enable.invoke()
+                    else:
+                        cancel.invoke()
+                finally:
+                    if dialog.winfo_exists():
+                        dialog.destroy()
+
+            for accept in (False, True):
+                with patch.object(root, "wait_window", side_effect=interact):
+                    self.assertEqual(app.confirm_super_risks(), accept)
+            self.assertEqual(states, [True] * 8)
+        finally:
+            root.destroy()
 
     @unittest.skipUnless(os.name == "nt", "Windows Tk layout")
     def test_bilingual_adjacent_warnings_fit_minimum_width_without_activity(self):

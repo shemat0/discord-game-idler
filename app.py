@@ -229,6 +229,8 @@ class App:
             self.super_experimental.set(False)
             self.clamp_concurrency(10)
         self.apply_modes()
+        if self.experimental_concurrency.get():
+            self.warn_about_performance()
 
     def change_super_mode(self):
         if self.locked():
@@ -236,9 +238,49 @@ class App:
             return
         if not self.experimental_concurrency.get():
             self.super_experimental.set(False)
+        elif self.super_experimental.get():
+            self.super_experimental.set(False)
+            self.super_experimental.set(self.confirm_super_risks())
         if not self.super_experimental.get():
             self.clamp_concurrency(self.count_limit())
         self.apply_modes()
+
+    def warn_about_performance(self):
+        messagebox.showwarning(tr("app.performance_title"), tr("app.performance_details"), parent=self.root)
+
+    def confirm_super_risks(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title(tr("app.super_title"))
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        panel = ttk.Frame(dialog, padding=16)
+        panel.pack(fill="both", expand=True)
+        ttk.Label(panel, text=tr("app.super_warning"), wraplength=360,
+                  style="Warning.TLabel").pack(anchor="w")
+        acknowledged = tk.BooleanVar(master=dialog, value=False)
+        accepted = False
+
+        def accept():
+            nonlocal accepted
+            if acknowledged.get():
+                accepted = True
+                dialog.destroy()
+
+        checkbox = ttk.Checkbutton(panel, text=tr("app.acknowledge_risks"), variable=acknowledged,
+                                   command=lambda: enable.configure(
+                                       state="normal" if acknowledged.get() else "disabled"))
+        checkbox.pack(anchor="w", pady=12)
+        buttons = ttk.Frame(panel)
+        buttons.pack(anchor="e")
+        ttk.Button(buttons, text=tr("app.cancel"), command=dialog.destroy).pack(side="left", padx=(0, 8))
+        enable = ttk.Button(buttons, text=tr("app.enable"), command=accept, state="disabled")
+        enable.pack(side="left")
+        dialog.bind("<Escape>", lambda _event: dialog.destroy())
+        dialog.wait_visibility()
+        dialog.grab_set()
+        checkbox.focus_set()
+        self.root.wait_window(dialog)
+        return accepted
 
     def clamp_concurrency(self, limit):
         try:
@@ -257,6 +299,8 @@ class App:
             self.experimental_timing.set(self.rotation.experimental_timing)
             return
         self.apply_modes()
+        if self.experimental_timing.get():
+            self.warn_about_performance()
 
     def apply_modes(self):
         many = self.experimental_concurrency.get()

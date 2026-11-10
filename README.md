@@ -18,16 +18,16 @@ From the [latest release](https://github.com/shemat0/discord-game-idler/releases
 4. Set **At the same time** to 1–10 (default: 10). Fewer selected games produce fewer processes, with no duplicates. A queue that fits stays running. Larger queues rotate in groups: 25 games at a limit of 10 form groups of 10, 10, and 5, then repeat.
 5. **Stop** or closing the main app stops its processes. Closing any helper window stops the current group. Launch failures roll back the partial group. Failed stops retain the remaining processes for another Stop attempt. After errors there are no automatic relaunches.
 
-## Independent experimental controls (1.3.0)
+## Independent experimental controls (1.3.1)
 
-Both experiments are **off at startup** and independent. Each checkbox has an adjacent **May reduce system performance** warning.
+Both experiments are **off at startup** and independent. Each checkbox has an adjacent **May reduce system performance** warning. Turning either mode on also shows a warning about increased system load.
 
 | Checkbox beside the field | Off | On |
 | --- | --- | --- |
 | Concurrent game count | 1–10 games | 1–100 games; your count is preserved when enabling |
 | Group interval | 1–1440 minutes | 10–86400 seconds, configurable; default 10 seconds |
 
-After enabling the concurrent game experiment, a **Super experiment: up to 1000** checkbox appears below it. It starts unchecked and raises the cap to 1000 without changing the interval. **It may work incorrectly with your system and use more than 1 GB of RAM.** Turning it off clamps the count to 100. Turning the concurrent game experiment off clears the super experiment and clamps the count to 10.
+After enabling the concurrent game experiment, a **Super experiment: up to 1000** checkbox appears below it. It starts unchecked. To raise the cap to 1000, select **I understand the risks** in the confirmation window and click **Enable**. The interval stays the same. **It may work incorrectly with your system and use more than 1 GB of RAM.** Turning it off clamps the count to 100. Turning the concurrent game experiment off clears the super experiment and clamps the count to 10.
 
 Examples: enable only the count experiment for **100 games held for 180 minutes**; enable only the time experiment for **one game at a time, changing every 10 seconds** through a multi-game queue; enable both for **100 games per group, changing every 10 seconds**. If the whole selected queue fits the chosen count, it stays running instead of restarting. One selected game therefore stays running until Stop.
 
@@ -74,4 +74,4 @@ python -m venv .venv
 .\.venv\Scripts\python.exe build.py
 ```
 
-The build runs checks and writes `DiscordGameIdler.exe`, the bilingual ZIP, and `SHA256SUMS.txt` under `dist/v1.3.0/`. No GitHub credentials are needed to build. This project is independent of Discord.
+The build runs checks and writes `DiscordGameIdler.exe`, the bilingual ZIP, and `SHA256SUMS.txt` under `dist/v1.3.1/`. No GitHub credentials are needed to build. This project is independent of Discord.

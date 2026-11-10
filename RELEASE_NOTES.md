@@ -1,3 +1,17 @@
+# Discord Game Idler 1.3.1
+
+## English
+
+- Turning on either experimental mode shows a warning about increased system load.
+- The mode for up to 1000 games requires selecting **I understand the risks** before clicking **Enable**. The dialog warns about possible system instability and memory use above 1 GB.
+
+## Русский
+
+- При включении любого экспериментального режима появляется предупреждение о повышенной нагрузке на компьютер.
+- Для запуска режима до 1000 игр нужно отметить **«Я осознаю риски»** и нажать **«Включить»**. Окно предупреждает о возможной нестабильной работе системы и потреблении более 1 ГБ ОЗУ.
+
+---
+
 # Discord Game Idler 1.3.0
 
 ## English
