@@ -2,9 +2,9 @@
 
 [Русский](README.ru.md) · English
 
-Experimental Windows desktop utility for simulating game processes from Discord's public detectable-application catalog. It runs lightweight helper windows; it does not install or launch the actual games.
+Discord Game Idler is an experimental Windows tool intended to boost tracked playtime and the number of games played for Discord profile badges, and to help with Discord Quests that require playing a game. It simulates game activity using lightweight Windows processes and Discord's public game catalog.
 
-**Discord recognition and badge/playtime credit are not guaranteed or verified by this app.** Running ten processes does not establish that Discord counts ten games or multiplies playtime. The timer measures only local elapsed time.
+**Discord detection, badge progress, and Quest completion remain unverified.** The timer measures local session time.
 
 Light and dark themes are available in the same client through **Theme**, next to **Language**. The default is dark; warnings use amber in dark mode and brown in light mode.
 
