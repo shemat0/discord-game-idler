@@ -4,7 +4,7 @@
 
 Discord Game Idler is an experimental Windows tool intended to boost tracked playtime and the number of games played for Discord profile badges, and to help with Discord Quests that require playing a game. It simulates game activity using lightweight Windows processes and Discord's public game catalog.
 
-**Discord detection, badge progress, and Quest completion remain unverified.** The timer measures local session time.
+**Discord detected and credited simulated game activity in the maintainer’s manual testing.** Credit may vary by game, session length, and Quest requirements. The timer measures local session time.
 
 Light and dark themes are available in the same client through **Theme**, next to **Language**. The default is dark; warnings use amber in dark mode and brown in light mode.
 
@@ -18,7 +18,7 @@ From the [latest release](https://github.com/shemat0/discord-game-idler/releases
 4. Set **At the same time** to 1–10 (default: 10). Fewer selected games produce fewer processes, with no duplicates. A queue that fits stays running. Larger queues rotate in groups: 25 games at a limit of 10 form groups of 10, 10, and 5, then repeat.
 5. **Stop** or closing the main app stops its processes. Closing any helper window stops the current group. Launch failures roll back the partial group. Failed stops retain the remaining processes for another Stop attempt. After errors there are no automatic relaunches.
 
-## Independent experimental controls (1.2.0)
+## Independent experimental controls (1.3.0)
 
 Both experiments are **off at startup** and independent. Each checkbox has an adjacent **May reduce system performance** warning.
 
@@ -35,7 +35,7 @@ Switching time units preserves the separate minutes and seconds inputs, includin
 
 A group's configured dwell interval starts **after every process in the group has launched**. Larger queues rotate without overlapping groups; a remainder group is not dropped. Starting, rotation, and cleanup run in the background. **Stop** cancels between process launches and waits for the current system operation before cleaning up. Language switching remains available between operations.
 
-The automated checks simulate 100 processes and retain the ten-real-process smoke test; they do not open 100 windows. **Discord recognition and credit for short sessions or concurrent games are unconfirmed.** These controls change local processes, not Discord's server-side counters.
+The automated checks simulate 100 processes and retain the ten-real-process smoke test; they do not open 100 windows. These checks cover local process behavior. They do not measure how Discord credits short sessions or concurrent games.
 
 ## Languages and local data
 
